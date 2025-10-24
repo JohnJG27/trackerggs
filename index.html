@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Pixels — Tracker de Industrias (GGS) (multi-industria)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{--bg:#0e1220;--panel:#141a2e;--line:#222a46;--text:#e9edf7;--muted:#a8b3d6;--accent:#5ea1ff;--ok:#9be39b;--bad:#ff7777}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto}
+  header{padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#10162a,#0e1220)}
+  h1{margin:0;font-size:16px}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  .grid{display:grid;gap:12px} @media(min-width:860px){.grid{grid-template-columns: 360px 1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{cursor:pointer;border:1px solid var(--line);background:#182040;color:#fff;padding:8px 12px;border-radius:10px}
+  .btn.small{padding:6px 10px;border-radius:8px}
+  .status{margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}
+  .tag{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:#121a34;font-size:12px}
+  table{width:100%;border-collapse:collapse;border:1px solid var(--line);background:#0f1430;border-radius:12px;overflow:hidden}
+  thead th{background:#121a36;color:#c8d1ff;text-align:left;padding:10px;border-bottom:1px solid var(--line);font-weight:600}
+  tbody td{padding:10px;border-top:1px solid var(--line)}
+  tbody tr:nth-child(even) td{background:#0d1430}
+  .ok{color:var(--ok);font-weight:600} .bad{color:var(--bad);font-weight:600}
+  details pre{white-space:pre-wrap;max-height:240px;overflow:auto;background:#0c122a;border:1px solid var(--line);padding:10px;border-radius:8px}
+
+  /* ===== Sidebar con iconos ===== */
+  .terrain-toggles{display:flex;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#182040;padding:7px 10px;border-radius:10px}
+  .industries{display:grid;gap:10px}
+  .ind-row{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center}
+  .ind-icon{
+    width:36px;height:36px;border-radius:10px;overflow:hidden;display:grid;place-items:center;
+    background:#0f1733;border:1px solid var(--line);box-shadow:0 0 0 0 rgba(94,161,255,0);
+    transition:box-shadow .15s, transform .05s;
+  }
+  .ind-icon img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+  .ind-icon span{font-weight:700;color:#c8d1ff}
+  .ind-icon:hover{box-shadow:0 0 0 3px rgba(94,161,255,.2)}
+  .ind-icon:active{transform:scale(.98)}
+  .tiers{display:flex;flex-wrap:wrap;gap:6px}
+  .tier-btn{
+    cursor:pointer;border:1px solid var(--line);background:#101a3a;color:#cfe2ff;
+    height:28px;min-width:28px;padding:0 10px;border-radius:999px;font-weight:600;font-size:12px
+  }
+  .tier-btn:hover{border-color:#3f88ff;color:#fff}
+  .tier-btn.current{background:var(--accent);color:#061225;border-color:#3f88ff}
+
+  /* Land copiable */
+  .landcell{cursor:pointer;color:var(--accent);text-decoration:underline}
+  .landcell.flash{background:rgba(94,161,255,.15);transition:background .6s}
+
+  /* ====== Icono de Environment ====== */
+  .envcell{display:flex;align-items:center;gap:6px}
+  .envcell img{
+    width:22px;height:22px;image-rendering:pixelated;display:block
+  }
+</style>
+</head>
+<body>
+<header class="wrap"><h1>Pixels — Tracker de Industrias (GGS)</h1></header>
+
+<main class="wrap grid">
+  <!-- IZQUIERDA -->
+  <aside class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div class="terrain-toggles">
+        <label class="chip"><input id="chk-land" type="checkbox" checked> Land</label>
+        <label class="chip"><input id="chk-water" type="checkbox" checked> Water</label>
+        <label class="chip"><input id="chk-space" type="checkbox" checked> Space</label>
+      </div>
+    </div>
+
+    <div style="margin:12px 0 6px;color:#c8d1ff;font-weight:600">Industrias</div>
+    <div id="industryList" class="industries"></div>
+
+    <div class="row" style="margin-top:10px">
+      <button id="btnLoadAll" class="btn">Cargar todas</button>
+      <button id="btnReset" class="btn">Reset</button>
+    </div>
+
+    <div id="status" class="status">Listo.</div>
+
+    <details style="margin-top:8px">
+      <summary>Ver JSON crudo</summary>
+      <pre id="raw"></pre>
+    </details>
+    <details>
+      <summary>Alias/variantes usadas</summary>
+      <pre id="variant"></pre>
+    </details>
+  </aside>
+
+  <!-- DERECHA -->
+  <section class="panel">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div id="current" class="tag">—</div>
+      <div id="summary" class="tag">—</div>
+    </div>
+
+    <div style="overflow:auto">
+      <table aria-label="Lands">
+        <thead>
+          <tr>
+            <th>Land</th>
+            <th>Environment</th>
+            <th>Estado</th>
+            <th>Ready</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="5" style="color:#a8b3d6">Selecciona una industria/tier.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const API_URL = "https://pixels-api.xyz/API/load_data.php";
+const $ = s => document.querySelector(s);
+const fmt = n => Number.isFinite(n) ? new Intl.NumberFormat().format(n) : "—";
+
+/* ========= Credenciales como en tus capturas ========= */
+const PID = "65f224e1ca1af871f1d7b005";
+const USER_ACDE = "vwNueMt8az37GMKgtQ1l";
+const VERSION = "503";
+
+/* ---------- ICONOS POR INDUSTRIA ---------- */
+const ICONS = {
+  "Soil": "./icons/voxels_soil_03.png",
+  "Mine": "./icons/voxels_mine_01.png",
+  "Tree": "./icons/voxels_tree_01.png",
+  "Winery": "./icons/voxels_winery_01.png",
+  "Woodworking": "./icons/voxels_woodworking_01.png",
+  "Kiln": "./icons/voxels_kiln_01.png",
+  "Metalworking": "./icons/voxels_metalworking_01.png",
+  "Stove": "./icons/voxels_stove_03.png",
+  "Sushi Station": "./icons/sushi_station.png",
+  "Fishing Pond": "./icons/fishingpond.png",
+  "Mill": "./icons/windmill.png",
+  "Apiary": "./icons/voxels_apiary.png",
+  "Cow": "./icons/voxels_cow.png",
+  "Turkey": "./icons/voxels_turkey.png",
+  "Sheep": "./icons/sheep.png",
+  "Slug Hutch": "./icons/sluggery.png",
+  "Barney's BarnBQ": "./icons/landbbq.png",
+  "Submarine Sizzler": "./icons/waterbbq.png",
+  "Galactic Grill": "./icons/spacebbq.png",
+  "Textile": "./icons/textile.png",
+  "Sauna portal": "./icons/portal1.png",
+  "Pier Portal": "./icons/portal2.png",
+  "Neon Zone Portal": "./icons/portal3.png",
+  "Bazaarn Portal": "./icons/portal4.png",
+  "Growth Lab": "./icons/voxels_growthlab.png",
+  "Special Mine": "./icons/special_mine.png",
+};
+
+/* ===== Iconos para Environment ===== */
+const ENV_ICONS = {
+  land:  "./icons/land_land.png",
+  water: "./icons/water_land.png",
+  space: "./icons/space_land.png"
+};
+
+/* Industrias + tiers */
+const INDUSTRIES = [
+  { name:"Soil", tiers:["1","2","3","4"] },
+  { name:"Mine", tiers:["1","2","3","4"] },
+  { name:"Tree", tiers:["1","2","3","4"] },
+  { name:"Winery", tiers:["1","2","3","4"] },
+  { name:"Woodworking", tiers:["1","2","3","4"] },
+  { name:"Kiln", tiers:["1","2","3","4"] },
+  { name:"Metalworking", tiers:["1","2","3","4"] },
+  { name:"Stove", tiers:["1","2","3","4"] },
+  { name:"Sushi Station", tiers:["1","2","3","4"] },
+  { name:"Fishing Pond", tiers:["Standard"] },
+  { name:"Mill", tiers:["Standard"] },
+  { name:"Apiary", tiers:["Standard"] },
+  { name:"Cow", tiers:["Standard"] },
+  { name:"Turkey", tiers:["Standard"] },
+  { name:"Sheep", tiers:["Standard"] },
+  { name:"Slug Hutch", tiers:["Standard"] },
+  { name:"Barney's BarnBQ", tiers:["Standard"] },
+  { name:"Submarine Sizzler", tiers:["Standard"] },
+  { name:"Galactic Grill", tiers:["Standard"] },
+  { name:"Textile", tiers:["Standard"] },
+  { name:"Sauna portal", tiers:["Standard"] },
+  { name:"Pier Portal", tiers:["Standard"] },
+  { name:"Neon Zone Portal", tiers:["Standard"] },
+  { name:"Bazaarn Portal", tiers:["Standard"] },
+  { name:"Growth Lab", tiers:["Standard"] },
+  { name:"Special Mine", tiers:["Standard"] },
+];
+
+/* Aliases para la API */
+const ALIAS = {
+  "Soil": ["soil","farmland"],
+  "Mine": ["mine","mining","ore"],
+  "Tree": ["tree","trees","wood","lumber","forestry"],
+  "Winery": ["winery","wine","vineyard"],
+  "Woodworking": ["woodworking","carpentry","wood"],
+  "Kiln": ["kiln","furnace","ceramics"],
+  "Metalworking": ["metalworking","smith","blacksmith","forge","metal"],
+  "Stove": ["stove","kitchen_stove","cooking_stove"],
+  "Sushi Station": ["sushi_kit","sushi_station","sushistation","sushi","sushi-bar"],
+  "Fishing Pond": ["fishing_pond","fish","fishing","pond"],
+  "Mill": ["mill","windmill","grain_mill"],
+  "Apiary": ["apiary","bees","honey"],
+  "Cow": ["cow","cattle","dairy"],
+  "Turkey": ["turkey","poultry"],
+  "Sheep": ["sheep","wool"],
+  "Slug Hutch": ["hutch","slug","snail_hutch"],
+  "Barney's BarnBQ": ["barneys_barnbq","barnbq","barney_bbq"],
+  "Submarine Sizzler": ["submarine_sizzler","submarine","sea_grill"],
+  "Galactic Grill": ["galactic_grill","galacticgrill","space_grill"],
+  "Textile": ["textile_mill","weaving","loom"],
+  "Sauna portal": ["sauna_portal","sauna","portal_sauna"],
+  "Pier Portal": ["pier_portal","pierportal","pier"],
+  "Neon Zone Portal": ["neon_portal","neon_portalz","neon_zone"],
+  "Bazaarn Portal": ["bazaarn_portal","bazaar_portal","bazaarn"],
+  "Growth Lab": ["growthlab","growthlab1","lab_growth"],
+  "Special Mine": ["speicial_mine","mine_special","rare_mine"]
+};
+
+/* Normalizaciones comunes */
+function genericAliases(label){
+  const base = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const noSpace = base.replace(/\s+/g,"");
+  return [base, noSpace, base.replace(/\s+/g,"_"), base.replace(/\s+/g,"-")];
+}
+
+/* ====== ETA (min) ====== */
+function etaMin(it){
+  const now = Date.now();
+  if (Array.isArray(it.finishing) && it.finishing.length) {
+    const msList = it.finishing
+      .map(v => typeof v === "number" ? v : Number(v))
+      .filter(v => Number.isFinite(v) && v > 0)
+      .map(v => (v < 1e12 ? v * 1000 : v));
+    const upcoming = msList.filter(ms => ms > now);
+    if (upcoming.length) {
+      const next = Math.min(...upcoming);
+      return Math.max(0, Math.ceil((next - now)/60000));
+    }
+  }
+  const abs = it.busy_until || it.occupied_until || it.endTime || it.until || it.next_available_at;
+  const t = typeof abs === "number" ? (abs < 1e12 ? abs*1000 : abs) : Date.parse(abs || "");
+  if (Number.isFinite(t)) {
+    const m = Math.round((t - now)/60000);
+    if (m >= 0) return m;
+  }
+  return null;
+}
+
+/* ====== Normalización fila ====== */
+function normalize(item){
+  let total = Number.isFinite(item.total) ? item.total :
+              Number.isFinite(item.totalSlots) ? item.totalSlots :
+              Number.isFinite(item.capacity) ? item.capacity : null;
+
+  let available = Number.isFinite(item.available) ? item.available :
+                  Number.isFinite(item.availableSlots) ? item.availableSlots : null;
+
+  if(available==null && total!=null){
+    const busy = Number.isFinite(item.busy) ? item.busy :
+                 Number.isFinite(item.occupied) ? item.occupied :
+                 Number.isFinite(item.busySlots) ? item.busySlots : null;
+    if(Number.isFinite(busy)) available = Math.max(0, total - busy);
+  }
+
+  const eta = etaMin(item);
+  const status = item.time_status || item.status ||
+                 ((Number.isFinite(available) && available>0) ? "Ready" : "Busy");
+
+  return {
+    landId: item.landId ?? item.id ?? item.land_id ?? item.LandId ?? "",
+    env: (item.traits_environment ?? item.environment ?? item.env ?? "").toString(),
+    available: Number.isFinite(available) ? available : 0,
+    total: Number.isFinite(total) ? total : null,
+    timeStatus: status,
+    eta
+  };
+}
+
+/* ====== Orden: disponibles desc, luego ETA asc ====== */
+function orderRows(list){
+  const rows = [...list];
+  rows.sort((a,b)=>{
+    const da = Number.isFinite(a.available) ? a.available : -1;
+    const db = Number.isFinite(b.available) ? b.available : -1;
+    if (db !== da) return db - da;
+    const ea = Number.isFinite(a.eta) ? a.eta : Infinity;
+    const eb = Number.isFinite(b.eta) ? b.eta : Infinity;
+    if (ea !== eb) return ea - eb;
+    return String(a.landId).localeCompare(String(b.landId));
+  });
+  return rows;
+}
+
+/* ====== Variantes de payload (con casos especiales) ====== */
+function payloadVariants(industryKey, tier, envSel){
+  const envFallback = { land:true, water:true, space:true };
+  const envObj = (envSel.land || envSel.water || envSel.space) ? envSel : envFallback;
+  const envArr = Object.entries(envObj).filter(([,v])=>v).map(([k])=>k);
+
+  const common = {
+    pid: PID,
+    operation: "fetchDataRequest",
+    version: VERSION,
+    user_acde: USER_ACDE
+  };
+
+  const variants = [];
+
+  // === Fishing Pond: sin selectedLandTypes (como tu captura)
+  if (industryKey === "fishing_pond"){
+    variants.push({
+      name:"fishing_pond minimal (tier string)",
+      body:{...common, extra:{ industry: industryKey, tier: String(tier) }, filters:{}}
+    });
+    variants.push({
+      name:"fishing_pond minimal (tier number)",
+      body:{...common, extra:{ industry: industryKey, tier: (tier==="Standard"?"Standard":Number(tier)) }, filters:{}}
+    });
+    return variants;
+  }
+
+  // === Sushi Kit: selectedLandTypes todo en false (como tu captura)
+  if (industryKey === "sushi_kit"){
+    const disabled = { land:false, water:false, space:false };
+    variants.push({
+      name:"sushi_kit env=false tier number",
+      body:{...common, extra:{ industry: industryKey, tier: Number(tier), selectedLandTypes: disabled, selectedBoost:false }, filters:{}}
+    });
+    variants.push({
+      name:"sushi_kit env=false tier string",
+      body:{...common, extra:{ industry: industryKey, tier: String(tier), selectedLandTypes: disabled, selectedBoost:false }, filters:{}}
+    });
+    // por si acaso también probamos con el env normal
+    variants.push({
+      name:"sushi_kit env=obj tier string",
+      body:{...common, extra:{ industry: industryKey, tier: String(tier), selectedLandTypes: envObj, selectedBoost:false }, filters:{}}
+    });
+    return variants;
+  }
+
+  // === Resto de industrias: probamos varias formas
+  variants.push({
+    name:"tier string, env object",
+    body:{...common, extra:{ industry: industryKey, tier:String(tier), selectedLandTypes:envObj, selectedBoost:false }, filters:{}}
+  });
+  variants.push({
+    name:"tier number, env object",
+    body:{...common, extra:{ industry: industryKey, tier:(tier==="Standard"?"Standard":Number(tier)), selectedLandTypes:envObj, selectedBoost:false }, filters:{}}
+  });
+  variants.push({
+    name:"tier string, env array",
+    body:{...common, extra:{ industry: industryKey, tier:String(tier), selectedLandTypes:envArr, selectedBoost:false }, filters:{}}
+  });
+  variants.push({
+    name:"tier string, sin env",
+    body:{...common, extra:{ industry: industryKey, tier:String(tier) }, filters:{}}
+  });
+
+  return variants;
+}
+
+/* ====== Fetch agregando (y dedupe) ====== */
+async function fetchIndustry(label, tier, envSel){
+  const cand = [...(ALIAS[label]||[]), ...genericAliases(label)];
+  const tryKeys = [...new Set(cand)];
+
+  const used = [];
+  const bucket = [];
+
+  for (const industryKey of tryKeys){
+    const variants = payloadVariants(industryKey, tier, envSel);
+    for (const v of variants){
+      try{
+        const res = await fetch(API_URL, {
+          method:"POST",
+          headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},
+          body: JSON.stringify(v.body)
+        });
+        if(!res.ok) continue;
+        const json = await res.json();
+
+        $("#raw").textContent = JSON.stringify(json, null, 2);
+
+        let arr = [];
+        if (Array.isArray(json?.data)) arr = json.data;
+        else if (Array.isArray(json?.result)) arr = json.result;
+        else if (json?.data && typeof json.data === "object") arr = Object.values(json.data);
+
+        if (arr.length){
+          used.push(`${industryKey} · ${v.name} [+${arr.length}]`);
+          bucket.push(...arr);
+        }
+      }catch(e){}
+    }
+  }
+  $("#variant").textContent = used.length ? used.join("\n") : "No se encontró alias/variante con resultados.";
+
+  if (!bucket.length) return [];
+
+  // dedupe por land
+  const byId = new Map();
+  for (const it of bucket){
+    const id = it.landId ?? it.id ?? it.land_id ?? it.LandId ?? "";
+    if (!id) continue;
+    if (!byId.has(id)) byId.set(id, {...it});
+    else {
+      const prev = byId.get(id);
+      byId.set(id, {...prev, ...it,
+        finishing: [...(prev.finishing||[]), ...(it.finishing||[])].filter(Boolean)
+      });
+    }
+  }
+
+  return Array.from(byId.values()).map(normalize);
+}
+
+/* ====== Formato/copia Land ====== */
+function formatLandId(rawId){
+  let m = /^pixelsNFTFarm-(\d+)/i.exec(rawId);
+  if (m) return { text:`Exterior - ${m[1]}`, num:m[1] };
+  m = /^nftHouse(\d+)/i.exec(rawId);
+  if (m) return { text:`Interior - ${m[1]}`, num:m[1] };
+  m = /(\d+)$/.exec(rawId || "");
+  const num = m ? m[1] : String(rawId || "");
+  return { text: rawId || "—", num };
+}
+
+/* ====== Icono de Environment ====== */
+function envIconHTML(envRaw){
+  const key = String(envRaw || "").trim().toLowerCase();
+  const src = ENV_ICONS[key];
+  if (!src) return "—";
+  const label = key.charAt(0).toUpperCase() + key.slice(1);
+  return `<span class="envcell"><img src="${src}" alt="${label}" title="${label}"></span>`;
+}
+
+/* ====== Render tabla ====== */
+function renderRows(rows, label, tier){
+  const tbody = $("#tbody"); tbody.innerHTML = "";
+  const ordered = orderRows(rows);
+
+  if(ordered.length===0){
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#a8b3d6">No hay resultados.</td></tr>`;
+  }else{
+    for(const r of ordered){
+      const isBusy = String(r.timeStatus || "").toLowerCase() === "busy" || r.available === 0;
+      const landFmt = formatLandId(r.landId);
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="landcell" title="Click para copiar: ${landFmt.num}">${landFmt.text}</td>
+        <td>${envIconHTML(r.env)}</td>
+        <td class="${isBusy ? 'bad' : 'ok'}">${isBusy ? "Busy" : "Ready"}</td>
+        <td>${fmt(r.available)}${r.total!=null?`/${fmt(r.total)}`:""}</td>
+        <td>${ isBusy && Number.isFinite(r.eta) ? `${fmt(r.eta)} min` : "—" }</td>
+      `;
+      tr.children[0].addEventListener("click", async ()=>{
+        try{
+          await navigator.clipboard.writeText(landFmt.num);
+          $("#status").textContent = `Copiado: ${landFmt.num}`;
+          tr.children[0].classList.add("flash");
+          setTimeout(()=>tr.children[0].classList.remove("flash"), 600);
+        }catch(e){
+          $("#status").textContent = "No se pudo copiar al portapapeles.";
+        }
+      });
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  const libres = ordered.reduce((a,b)=> a + (b.available>0? b.available : 0), 0);
+  const tot = ordered.reduce((a,b)=> a + (Number.isFinite(b.total)? b.total : 0), 0);
+  $("#current").innerHTML = `<b>${label}</b> <span class="tag">Tier ${tier}</span>`;
+  $("#summary").innerHTML = `Filas: ${ordered.length} · Libres Σ: ${fmt(libres)} / ${fmt(tot)}`;
+}
+
+/* ====== Sidebar con iconos + tiers ====== */
+function buildIndustryList(){
+  const box = $("#industryList");
+  box.innerHTML = "";
+  INDUSTRIES.forEach(({name, tiers})=>{
+    const row = document.createElement("div");
+    row.className = "ind-row";
+
+    // Icono
+    const ico = document.createElement("button");
+    ico.className = "ind-icon";
+    ico.title = name;
+    const src = ICONS[name];
+    if (src){
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = name;
+      ico.appendChild(img);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = name[0] || "?";
+      ico.appendChild(span);
+    }
+    row.appendChild(ico);
+
+    // Tiers
+    const tbox = document.createElement("div");
+    tbox.className = "tiers";
+    tiers.forEach(t=>{
+      const b = document.createElement("button");
+      b.className = "tier-btn";
+      b.textContent = t === "Standard" ? "Standard" : t;
+      b.title = `${name} · Tier ${t}`;
+      b.addEventListener("click", ()=>{
+        tbox.querySelectorAll(".current").forEach(el=>el.classList.remove("current"));
+        b.classList.add("current");
+        doSearch(name, t);
+      });
+      tbox.appendChild(b);
+    });
+    row.appendChild(tbox);
+
+    box.appendChild(row);
+  });
+}
+
+/* ====== Buscar ====== */
+async function doSearch(label, tier){
+  $("#variant").textContent = "";
+  $("#raw").textContent = "";
+  const envSel = {
+    land: $("#chk-land").checked,
+    water: $("#chk-water").checked,
+    space: $("#chk-space").checked
+  };
+  $("#status").textContent = `Buscando ${label} · Tier ${tier}…`;
+  try{
+    const rows = await fetchIndustry(label, tier, envSel);
+    renderRows(rows, label, tier);
+    $("#status").textContent = `Listo: ${label} · Tier ${tier} (${rows.length} registros).`;
+  }catch(err){
+    $("#status").textContent = `Error: ${err.message}`;
+  }
+}
+
+/* ====== Botones laterales ====== */
+$("#btnLoadAll").addEventListener("click", async ()=>{
+  $("#status").textContent = "Cargando todas las industrias (primer tier de cada una)…";
+  for(const {name, tiers} of INDUSTRIES){
+    await doSearch(name, tiers[0]);
+  }
+  $("#status").textContent = "Carga masiva completada. Selecciona cualquier industria/tier para refrescar.";
+});
+$("#btnReset").addEventListener("click", ()=>{
+  $("#raw").textContent = ""; $("#variant").textContent = "";
+  $("#tbody").innerHTML = `<tr><td colspan="5" style="color:#a8b3d6">Selecciona una industria/tier.</td></tr>`;
+  $("#current").textContent = "—"; $("#summary").textContent = "—";
+  $("#status").textContent = "Listo.";
+});
+
+/* Bootstrap */
+buildIndustryList();
+</script>
+</body>
+</html>
